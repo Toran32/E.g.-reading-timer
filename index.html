@@ -5,44 +5,29 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Reading Pomodoro</title>
 <style>
-  :root{
-    --accent:#7c4dff; /* purple */
-    --bg1:#f4f2ff;
-    --bg2:#ffffff;
-    --text:#2b2b2b;
-  }
+  :root{ --accent:#7c4dff; --bg1:#f4f2ff; --bg2:#ffffff; --text:#2b2b2b; }
   *{box-sizing:border-box}
-  body{
-    margin:0; min-height:100vh; display:grid; place-items:center;
-    background: linear-gradient(180deg,var(--bg1),var(--bg2));
-    font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    color:var(--text);
-  }
-  .app{ width:min(820px,94vw); padding:28px 22px 34px; text-align:center }
-  .tabs{ display:flex; gap:14px; justify-content:center; margin-bottom:18px; flex-wrap:wrap }
-  .tab{
-    padding:10px 16px; border:2px solid #d6d3ff; color:var(--accent);
-    border-radius:30px; background:#fff; cursor:pointer; font-weight:600; letter-spacing:.2px
-  }
+  body{ margin:0; min-height:100vh; display:grid; place-items:center;
+        background:linear-gradient(180deg,var(--bg1),var(--bg2));
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--text)}
+  .app{ width:min(840px,96vw); padding:26px 20px 34px; text-align:center }
+  .tabs{ display:flex; gap:14px; justify-content:center; margin-bottom:16px; flex-wrap:wrap }
+  .tab{ padding:10px 16px; border:2px solid #d6d3ff; color:var(--accent);
+        border-radius:30px; background:#fff; cursor:pointer; font-weight:600 }
   .tab.active{ background:var(--accent); color:#fff; border-color:transparent }
-  #time{
-    font-size:clamp(64px,18vw,160px); font-weight:800; letter-spacing:2px;
-    color:var(--accent); margin:20px 0 12px
-  }
-  .controls{ display:flex; gap:14px; justify-content:center; align-items:center; flex-wrap:wrap }
-  button{
-    border:2px solid #d6d3ff; background:#fff; color:var(--text);
-    padding:10px 18px; border-radius:16px; cursor:pointer; font-weight:600
-  }
+  #time{ font-size:clamp(64px,18vw,160px); font-weight:800; letter-spacing:2px; color:var(--accent); margin:18px 0 10px }
+  .controls{ display:flex; gap:12px; justify-content:center; align-items:center; flex-wrap:wrap }
+  button{ border:2px solid #d6d3ff; background:#fff; color:var(--text); padding:10px 18px; border-radius:16px; cursor:pointer; font-weight:600 }
   button.primary{ background:var(--accent); color:#fff; border-color:transparent }
   button:disabled{ opacity:.55; cursor:default }
-  .row{ display:flex; gap:10px; justify-content:center; margin-top:10px }
-  dialog{
-    border:none; border-radius:16px; padding:20px; width:min(420px,92vw); box-shadow:0 10px 30px rgba(0,0,0,.1)
-  }
+  .row{ display:flex; gap:10px; justify-content:center; margin-top:10px; flex-wrap:wrap }
+  .inputs{ display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; margin:8px 0 4px }
+  input[type="text"]{ padding:10px 12px; border:1px solid #ddd; border-radius:12px; min-width:220px }
+  label.switch{ display:flex; align-items:center; gap:8px; font-size:14px; opacity:.85 }
+  .note{ opacity:.7; font-size:14px; margin-top:6px }
+  dialog{ border:none; border-radius:16px; padding:20px; width:min(420px,92vw); box-shadow:0 10px 30px rgba(0,0,0,.1) }
   .field{ display:flex; align-items:center; justify-content:space-between; margin:10px 0 }
   input[type="number"]{ width:90px; padding:8px 10px; border:1px solid #ddd; border-radius:10px; font-size:16px }
-  .note{ opacity:.7; font-size:14px; margin-top:6px }
 </style>
 </head>
 <body>
@@ -55,11 +40,19 @@
 
     <div id="time">25:00</div>
 
+    <div class="inputs">
+      <input id="bookInput" type="text" placeholder="Book title (for log)">
+      <label class="switch">
+        <input id="autoLog" type="checkbox"> Auto-log when finished
+      </label>
+    </div>
+
     <div class="controls">
       <button id="start" class="primary">Start</button>
       <button id="pause" style="display:none">Pause</button>
       <button id="resume" class="primary" style="display:none">Resume</button>
       <button id="reset">Reset</button>
+      <button id="log">Log now</button>
       <button id="gear" title="Settings">⚙️</button>
     </div>
     <div class="row note" id="status"></div>
@@ -70,7 +63,7 @@
     <div class="field"><label>Focus (min)</label><input id="focusMin" type="number" min="1" step="1"></div>
     <div class="field"><label>Short Break (min)</label><input id="shortMin" type="number" min="1" step="1"></div>
     <div class="field"><label>Long Break (min)</label><input id="longMin" type="number" min="1" step="1"></div>
-    <div class="note">Values are saved and used in Notion embeds too.</div>
+    <div class="note">Values persist in Notion embeds.</div>
     <div class="row" style="margin-top:14px">
       <button id="save">Save</button>
       <button id="close">Close</button>
@@ -83,18 +76,21 @@
 
 <script>
 (function(){
-  // ---- persistence
-  const storeKey = 'reading-pomo-v1';
-  const defaults = { focus:25, short:5, long:15 };
-  const saved = JSON.parse(localStorage.getItem(storeKey)||'{}');
-  const config = Object.assign({}, defaults, saved);
+  // ---- SET YOUR WEBHOOK HERE ----
+  const WEBHOOK_URL = "PASTE_YOUR_MAKE_WEBHOOK_URL_HERE";
 
-  // ---- elements
+  const storeKey = 'reading-pomo-v2';
+  const defaults = { focus:25, short:5, long:15, autoLog:false, book:'' };
+  const saved = JSON.parse(localStorage.getItem(storeKey)||'{}');
+  const cfg = Object.assign({}, defaults, saved);
+
+  // elements
   const timeEl = document.getElementById('time');
   const startBtn = document.getElementById('start');
   const pauseBtn = document.getElementById('pause');
   const resumeBtn = document.getElementById('resume');
   const resetBtn = document.getElementById('reset');
+  const logBtn = document.getElementById('log');
   const tabs = [...document.querySelectorAll('.tab')];
   const statusEl = document.getElementById('status');
   const gear = document.getElementById('gear');
@@ -107,98 +103,105 @@
   const saveBtn = document.getElementById('save');
   const closeBtn = document.getElementById('close');
 
-  let mode = 'focus';      // focus | short | long
-  let totalMs = config[mode]*60*1000;
-  let startAt = null;
-  let timer = null;
-  let remaining = totalMs;
+  const bookInput = document.getElementById('bookInput');
+  const autoLog = document.getElementById('autoLog');
 
-  function fmt(ms){
-    const s = Math.max(0, Math.round(ms/1000));
-    const m = Math.floor(s/60);
-    const sec = s%60;
-    return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-  }
-  function render(){
-    timeEl.textContent = fmt(remaining);
-  }
+  // timer state
+  let mode = 'focus';
+  let totalMs = cfg[mode]*60*1000;
+  let startAt = null, timer = null, remaining = totalMs;
+
+  // session times (for logging)
+  let sessionStartIso = null;
+
+  function save(){ localStorage.setItem(storeKey, JSON.stringify({
+      focus:cfg.focus, short:cfg.short, long:cfg.long,
+      autoLog:autoLog.checked, book:bookInput.value
+  })); }
+
+  function fmt(ms){ const s = Math.max(0, Math.round(ms/1000)); const m = Math.floor(s/60); const sec = s%60;
+    return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; }
+
+  function render(){ timeEl.textContent = fmt(remaining); }
+
   function setMode(m){
-    mode = m;
-    tabs.forEach(t=>t.classList.toggle('active', t.dataset.mode===m));
-    totalMs = config[m]*60*1000;
-    remaining = totalMs;
-    stop();
-    render();
+    mode = m; tabs.forEach(t=>t.classList.toggle('active', t.dataset.mode===m));
+    totalMs = cfg[m]*60*1000; remaining = totalMs; stop(); render();
     statusEl.textContent = (m==='focus'?'Time to read 📚':'Break time ☕️');
   }
+
   function tick(){
-    const elapsed = Date.now()-startAt;
-    remaining = totalMs - elapsed;
-    if(remaining<=0){
-      remaining=0; render(); stop(); try{ding.play()}catch(e){}
-      statusEl.textContent = 'Done!';
-      return;
-    }
+    const elapsed = Date.now()-startAt; remaining = totalMs - elapsed;
+    if(remaining<=0){ remaining=0; render(); finish(); return; }
     render();
   }
+
   function start(){
-    startAt = Date.now();
+    startAt = Date.now(); sessionStartIso = new Date().toISOString();
     timer = setInterval(tick, 200);
-    startBtn.style.display='none';
-    pauseBtn.style.display='';
-    resumeBtn.style.display='none';
+    startBtn.style.display='none'; pauseBtn.style.display=''; resumeBtn.style.display='none';
   }
-  function pause(){
-    clearInterval(timer); timer=null;
-    totalMs = remaining;
-    startBtn.style.display='none';
-    pauseBtn.style.display='none';
-    resumeBtn.style.display='';
-  }
-  function resume(){
-    startAt = Date.now();
-    timer = setInterval(tick, 200);
-    startBtn.style.display='none';
-    pauseBtn.style.display='';
-    resumeBtn.style.display='none';
-  }
-  function stop(){
-    clearInterval(timer); timer=null;
-    startBtn.style.display='';
-    pauseBtn.style.display='none';
-    resumeBtn.style.display='none';
-  }
-  function reset(){
-    totalMs = config[mode]*60*1000;
-    remaining = totalMs;
-    stop(); render();
+  function pause(){ clearInterval(timer); timer=null; totalMs = remaining;
+    startBtn.style.display='none'; pauseBtn.style.display='none'; resumeBtn.style.display=''; }
+  function resume(){ startAt = Date.now(); timer = setInterval(tick, 200);
+    startBtn.style.display='none'; pauseBtn.style.display=''; resumeBtn.style.display='none'; }
+  function stop(){ clearInterval(timer); timer=null; startBtn.style.display=''; pauseBtn.style.display='none'; resumeBtn.style.display='none'; }
+  function reset(){ totalMs = cfg[mode]*60*1000; remaining = totalMs; stop(); render(); sessionStartIso=null; }
+
+  async function postSession(minutes, endedIso){
+    if(!WEBHOOK_URL || WEBHOOK_URL.startsWith("PASTE_")) return;
+    const payload = {
+      book: bookInput.value || '(Untitled)',
+      mode, minutes,
+      startedIso: sessionStartIso || endedIso,
+      endedIso, source:'notion-embed-timer'
+    };
+    try{
+      await fetch(WEBHOOK_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      statusEl.textContent = `Logged: ${payload.book} • ${minutes} min`;
+    }catch(e){ statusEl.textContent = 'Could not send to Notion (webhook error)'; }
   }
 
+  async function finish(){
+    stop(); try{ding.play()}catch(e){}
+    statusEl.textContent = 'Done!';
+
+    const endedIso = new Date().toISOString();
+    const totalMsLocal = cfg[mode]*60*1000; // full session length for mode
+
+    if(autoLog.checked && mode!=='short'){ // usually we only log focus/long; change if you want
+      await postSession(Math.round(totalMsLocal/60000), endedIso);
+    }
+  }
+
+  // events
   tabs.forEach(t=>t.addEventListener('click', ()=> setMode(t.dataset.mode)));
-  startBtn.onclick = start;
-  pauseBtn.onclick = pause;
-  resumeBtn.onclick = resume;
-  resetBtn.onclick = reset;
+  startBtn.onclick = start; pauseBtn.onclick = pause; resumeBtn.onclick = resume; resetBtn.onclick = reset;
 
-  gear.onclick = ()=> {
-    focusMin.value = config.focus;
-    shortMin.value = config.short;
-    longMin.value  = config.long;
-    modal.showModal();
+  // manual log button (logs current elapsed in minutes)
+  logBtn.onclick = async ()=>{
+    const nowIso = new Date().toISOString();
+    const ms = timer ? (cfg[mode]*60*1000 - remaining) : (cfg[mode]*60*1000); // if paused/stopped, assume full length
+    const mins = Math.max(1, Math.round(ms/60000));
+    await postSession(mins, nowIso);
   };
+
+  gear.onclick = ()=>{ focusMin.value=cfg.focus; shortMin.value=cfg.short; longMin.value=cfg.long; modal.showModal(); };
   closeBtn.onclick = ()=> modal.close();
   saveBtn.onclick = ()=>{
-    config.focus = Math.max(1, parseInt(focusMin.value||defaults.focus,10));
-    config.short = Math.max(1, parseInt(shortMin.value||defaults.short,10));
-    config.long  = Math.max(1, parseInt(longMin.value ||defaults.long ,10));
-    localStorage.setItem(storeKey, JSON.stringify(config));
-    modal.close();
-    setMode(mode); // reload current mode with new length
+    cfg.focus=Math.max(1,parseInt(focusMin.value||cfg.focus,10));
+    cfg.short=Math.max(1,parseInt(shortMin.value||cfg.short,10));
+    cfg.long =Math.max(1,parseInt(longMin.value ||cfg.long ,10));
+    localStorage.setItem(storeKey, JSON.stringify({ ...cfg, autoLog:autoLog.checked, book:bookInput.value }));
+    modal.close(); setMode(mode);
   };
 
-  // init
-  setMode('focus');
-  render();
+  // init UI from saved
+  bookInput.value = cfg.book||''; autoLog.checked = !!cfg.autoLog;
+  setMode('focus'); render();
+
+  bookInput.addEventListener('change', save);
+  autoLog.addEventListener('change', save);
 })();
 </script>
 </body>
